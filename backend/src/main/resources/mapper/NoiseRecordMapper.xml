@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.citynoise.evidence.mapper.NoiseRecordMapper">
+
+    <resultMap id="recordVOMap" type="com.citynoise.evidence.dto.RecordVO">
+        <id property="id" column="id"/>
+        <result property="recordNo" column="record_no"/>
+        <result property="sensorCode" column="sensor_code"/>
+        <result property="batchId" column="batch_id"/>
+        <result property="batchNo" column="batch_no"/>
+        <result property="sampleTime" column="sample_time"/>
+        <result property="longitude" column="longitude"/>
+        <result property="latitude" column="latitude"/>
+        <result property="dbValue" column="db_value"/>
+        <result property="spectrumSummary" column="spectrum_summary"/>
+        <result property="rawDataHash" column="raw_data_hash"/>
+        <result property="createdBy" column="created_by"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="anomalyStatus" column="anomaly_status"/>
+        <result property="anomalyId" column="anomaly_id"/>
+    </resultMap>
+
+    <sql id="recordColumns">
+        SELECT r.id, r.record_no, r.sensor_code, r.batch_id, b.batch_no, r.sample_time,
+               r.longitude, r.latitude, r.db_value, r.spectrum_summary, r.raw_data_hash,
+               r.created_by, r.created_at,
+               CASE WHEN ae.id IS NULL THEN 'NONE' ELSE ae.status END AS anomaly_status,
+               ae.id AS anomaly_id
+        FROM noise_record r
+        LEFT JOIN sampling_batch b ON b.id = r.batch_id AND b.deleted = 0
+        LEFT JOIN anomaly_event ae ON ae.record_id = r.id
+    </sql>
+
+    <select id="selectRecordById" resultMap="recordVOMap">
+        <include refid="recordColumns"/>
+        WHERE r.deleted = 0 AND r.id = #{id}
+        LIMIT 1
+    </select>
+
+    <select id="selectRecordPage" resultMap="recordVOMap">
+        <include refid="recordColumns"/>
+        WHERE r.deleted = 0
+        <if test="q.sensorCode != null and q.sensorCode != ''">
+            AND r.sensor_code = #{q.sensorCode}
+        </if>
+        <if test="q.startTime != null">
+            AND r.sample_time &gt;= #{q.startTime}
+        </if>
+        <if test="q.endTime != null">
+            AND r.sample_time &lt;= #{q.endTime}
+        </if>
+        <if test="q.dbMin != null">
+            AND r.db_value &gt;= #{q.dbMin}
+        </if>
+        <if test="q.dbMax != null">
+            AND r.db_value &lt;= #{q.dbMax}
+        </if>
+        <if test="q.anomalyStatus == 'NONE'">
+            AND ae.id IS NULL
+        </if>
+        <if test="q.anomalyStatus == 'ANY'">
+            AND ae.id IS NOT NULL
+        </if>
+        <if test="q.anomalyStatus == 'OPEN' or q.anomalyStatus == 'PROCESSING'
+              or q.anomalyStatus == 'RESOLVED' or q.anomalyStatus == 'IGNORED'">
+            AND ae.status = #{q.anomalyStatus}
+        </if>
+        ORDER BY r.sample_time DESC, r.id DESC
+    </select>
+
+    <select id="selectTrend" resultType="com.citynoise.evidence.dto.RecordTrendPoint">
+        SELECT DATE_FORMAT(sample_time, '%Y-%m-%d %H:00') AS time_bucket,
+               ROUND(AVG(db_value), 2) AS avg_db,
+               MAX(db_value)            AS max_db,
+               MIN(db_value)            AS min_db,
+               COUNT(*)                 AS sample_count
+        FROM noise_record
+        WHERE deleted = 0
+        <if test="sensorCode != null and sensorCode != ''">
+            AND sensor_code = #{sensorCode}
+        </if>
+        <if test="startTime != null">
+            AND sample_time &gt;= #{startTime}
+        </if>
+        <if test="endTime != null">
+            AND sample_time &lt;= #{endTime}
+        </if>
+        GROUP BY time_bucket
+        ORDER BY time_bucket
+        LIMIT 500
+    </select>
+</mapper>

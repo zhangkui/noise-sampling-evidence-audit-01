@@ -1,0 +1,74 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: noise-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root_pass_2026
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-noise_chain}
+      MYSQL_USER: ${MYSQL_USER:-noise}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-noise_pass_2026}
+      TZ: Asia/Shanghai
+    command:
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --default-time-zone=+08:00
+    ports:
+      - "${MYSQL_PORT_PUBLISH:-3307}:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-proot_pass_2026"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  redis:
+    image: redis:7-alpine
+    container_name: noise-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT_PUBLISH:-6380}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    container_name: noise-backend
+    restart: unless-stopped
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-noise_chain}
+      MYSQL_USER: ${MYSQL_USER:-noise}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-noise_pass_2026}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: ${JWT_SECRET:-ZGVtby1ub2lzZS1ldmlkZW5jZS1jaGFpbi1zZWNyZXQta2V5LTIwMjYtbG9uZy1lbm91Z2g}
+      TZ: Asia/Shanghai
+    ports:
+      - "${BACKEND_PORT_PUBLISH:-8080}:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: noise-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT_PUBLISH:-80}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  mysql-data:

@@ -1,0 +1,13 @@
+# 构建产物与依赖
+backend/target/
+frontend/node_modules/
+frontend/dist/
+
+# IDE / 系统
+.idea/
+.vscode/
+*.iml
+.DS_Store
+
+# 本地环境变量
+.env
