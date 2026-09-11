@@ -5,7 +5,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-const props = defineProps<{ status: string; kind?: 'anomaly' | 'import' | 'sensor' }>()
+const props = defineProps<{ status: string; kind?: 'anomaly' | 'import' | 'sensor' | 'batch' }>()
 
 const ANOMALY_MAP: Record<string, { label: string; type: string }> = {
   OPEN: { label: '待处理', type: 'danger' },
@@ -28,12 +28,22 @@ const SENSOR_MAP: Record<string, { label: string; type: string }> = {
   MAINTENANCE: { label: '维护中', type: 'warning' }
 }
 
+const BATCH_MAP: Record<string, { label: string; type: string }> = {
+  ACTIVE: { label: '进行中', type: 'success' },
+  CLOSED: { label: '已关闭', type: 'info' }
+}
+
+function mapOf(kind?: string) {
+  if (kind === 'import') return IMPORT_MAP
+  if (kind === 'sensor') return SENSOR_MAP
+  if (kind === 'batch') return BATCH_MAP
+  return ANOMALY_MAP
+}
+
 const type = computed(() => {
-  const map = props.kind === 'import' ? IMPORT_MAP : props.kind === 'sensor' ? SENSOR_MAP : ANOMALY_MAP
-  return (map[props.status]?.type || 'info') as any
+  return (mapOf(props.kind)[props.status]?.type || 'info') as any
 })
 const label = computed(() => {
-  const map = props.kind === 'import' ? IMPORT_MAP : props.kind === 'sensor' ? SENSOR_MAP : ANOMALY_MAP
-  return map[props.status]?.label || props.status
+  return mapOf(props.kind)[props.status]?.label || props.status
 })
 </script>

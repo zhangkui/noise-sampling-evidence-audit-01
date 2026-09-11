@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # =====================================================================
 # 城市噪声采样证据链 —— 接口演示脚本（仅需 curl，不依赖本机 Java/Node）
-# 演示：登录 / 重复提交 / 时间冲突 / 并发写入 / 异常生成 / 审计回放 / 批量导入
+# 演示：登录 / 重复提交 / 时间冲突 / 并发写入 / 异常生成 / 审计回放 / 批量导入 / 批次关闭
 # 用法：bash demo/api-demo.sh   （默认后端 http://localhost:8080）
 # =====================================================================
 set -uo pipefail
@@ -139,5 +139,28 @@ curl -s -X POST "$BASE/api/imports" -H "$AUTH" -H 'Content-Type: application/jso
    {\"sensorCode\":\"S-NJ-004\",\"sampleTime\":\"2026-09-10T13:00:00\",\"dbValue\":250.0,\"rawDataHash\":\"$DHASH\"},
    {\"sensorCode\":\"S-XX-999\",\"sampleTime\":\"2026-09-10T14:00:00\",\"dbValue\":66.0,\"rawDataHash\":\"0000000000000000000000000000000000000000000000000000000000000000\"}
  ]}"; echo
+# ---------- 7. 批次关闭（幂等）与批次门禁 ----------
+c_cyan "7. 批次关闭演示：创建批次 → 关闭 → 重复关闭（幂等）→ 已关闭批次写记录被拒"
+# 用时间戳派生不重叠的批次区间，保证脚本可重复执行
+OFF=$(( ($(date +%s) / 3600) % 100000 + 1 ))
+BT_START=$(date -u -d "2030-01-01 00:00:00 +$((OFF*2)) hours" +%Y-%m-%dT%H:%M:%S)
+BT_END=$(date -u -d "2030-01-01 00:00:00 +$((OFF*2+1)) hours" +%Y-%m-%dT%H:%M:%S)
+NEWB=$(curl -s -X POST "$BASE/api/batches" -H "$AUTH" -H 'Content-Type: application/json' \
+  -d "{\"sensorCode\":\"S-NJ-004\",\"startTime\":\"$BT_START\",\"endTime\":\"$BT_END\",\"purpose\":\"关闭演示批次\"}")
+BID=$(pick "$NEWB" '.data.id')
+BNO=$(pick "$NEWB" '.data.batchNo')
+c_grn "已创建批次 $BNO（$BT_START ~ $BT_END）"
+c_yel "第一次关闭（状态应变更为 CLOSED）："
+curl -s -X POST "$BASE/api/batches/$BID/close" -H "$AUTH"; echo
+c_yel "重复关闭（幂等返回当前状态，不追加重复审计节点）："
+curl -s -X POST "$BASE/api/batches/$BID/close" -H "$AUTH"; echo
+c_yel "向已关闭批次写入记录（应返回 40905，且不留记录/异常/证据/审计残留）："
+curl -s -X POST "$BASE/api/records" -H "$AUTH" -H 'Content-Type: application/json' -d "{
+  \"sensorCode\":\"S-NJ-004\",\"batchNo\":\"$BNO\",\"sampleTime\":\"$BT_START\",
+  \"dbValue\":70.0,\"rawDataHash\":\"$(HASH_OF "closed-batch-$BNO")\"}"; echo
+c_yel "该批次的审计节点（BATCH_CREATE 与 BATCH_CLOSE 各一条，无重复关闭）："
+curl -s "$BASE/api/audit/logs?entityType=BATCH&page=1&size=50" -H "$AUTH" \
+  | ( [ -n "$JQ" ] && $JQ ".data.records[] | select(.entityId==\"$BNO\") | {chainSeq,action,operator,operatorIp,traceId}" || cat )
+echo
 hr
 c_grn "全部演示完成。可在前端 http://localhost 打开各页面查看（账号 admin / admin123）"

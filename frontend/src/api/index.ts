@@ -218,6 +218,7 @@ export const sensorApi = {
 export const batchApi = {
   list: (sensorCode?: string) => get<SamplingBatch[]>('/batches', { sensorCode }),
   create: (data: any) => post<SamplingBatch>('/batches', data),
+  close: (id: number) => post<SamplingBatch>(`/batches/${id}/close`),
   overlapCheck: (params: { sensorCode: string; startTime: string; endTime: string }) =>
     get<{ overlap: boolean; conflicts: SamplingBatch[] }>('/batches/overlap-check', params)
 }

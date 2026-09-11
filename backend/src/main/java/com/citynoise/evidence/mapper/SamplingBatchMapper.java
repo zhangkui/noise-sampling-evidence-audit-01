@@ -5,6 +5,7 @@ import com.citynoise.evidence.entity.SamplingBatch;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -29,4 +30,13 @@ public interface SamplingBatchMapper extends BaseMapper<SamplingBatch> {
                                         @Param("startTime") LocalDateTime startTime,
                                         @Param("endTime") LocalDateTime endTime,
                                         @Param("excludeId") Long excludeId);
+
+    /**
+     * 仅当批次处于 ACTIVE 时置为 CLOSED（数据库层条件更新兜底，
+     * 并发下最多一个事务生效，保证关闭操作幂等）。
+     *
+     * @return 受影响行数：1 表示本次关闭生效；0 表示已是 CLOSED
+     */
+    @Update("UPDATE sampling_batch SET status = 'CLOSED' WHERE id = #{id} AND status = 'ACTIVE' AND deleted = 0")
+    int closeIfActive(@Param("id") Long id);
 }

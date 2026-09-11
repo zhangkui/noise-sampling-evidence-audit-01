@@ -9,6 +9,7 @@ import com.citynoise.evidence.service.BatchService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -34,6 +35,14 @@ public class BatchController {
     @PostMapping
     public Result<SamplingBatch> create(@Valid @RequestBody BatchCreateRequest request) {
         return Result.ok(batchService.create(request));
+    }
+
+    /**
+     * 关闭批次：仅 ACTIVE → CLOSED；重复关闭幂等返回当前状态，不重复写审计。
+     */
+    @PostMapping("/{id}/close")
+    public Result<SamplingBatch> close(@PathVariable Long id) {
+        return Result.ok(batchService.close(id));
     }
 
     /**

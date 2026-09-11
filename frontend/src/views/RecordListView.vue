@@ -253,7 +253,10 @@ async function openCreate() {
 watch(() => form.sensorCode, async (code) => {
   form.batchNo = ''
   if (code) {
-    formBatches.value = await batchApi.list(code).catch(() => [])
+    // 仅 ACTIVE 批次可关联新记录（已关闭批次服务端会拒绝写入）
+    formBatches.value = await batchApi.list(code)
+      .then((list) => list.filter((b) => b.status === 'ACTIVE'))
+      .catch(() => [])
   } else {
     formBatches.value = []
   }

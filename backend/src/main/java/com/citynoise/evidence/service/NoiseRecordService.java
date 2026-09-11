@@ -181,10 +181,15 @@ public class NoiseRecordService {
         // 1. 传感器必须存在
         sensorService.getByCode(request.getSensorCode());
 
-        // 2. 批次校验（若指定）：采样时间必须落在批次区间
+        // 2. 批次校验（若指定）：批次必须存在且为 ACTIVE，传感器匹配，采样时间落在批次区间。
+        //    所有校验失败都在任何写库/审计之前抛出统一业务异常，事务回滚不留残留。
         Long batchId = null;
         if (request.getBatchNo() != null && !request.getBatchNo().isBlank()) {
             SamplingBatch batch = batchService.getByNo(request.getBatchNo().trim());
+            if (!BatchService.STATUS_ACTIVE.equals(batch.getStatus())) {
+                throw new BusinessException(ErrorCode.BATCH_CLOSED,
+                        ErrorCode.BATCH_CLOSED.getMessage() + ": " + batch.getBatchNo());
+            }
             if (!batch.getSensorCode().equals(request.getSensorCode())) {
                 throw new BusinessException(ErrorCode.PARAM_INVALID,
                         "批次不属于传感器 " + request.getSensorCode());

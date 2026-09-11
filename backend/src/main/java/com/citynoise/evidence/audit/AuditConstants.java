@@ -20,6 +20,7 @@ public final class AuditConstants {
     public static final String ACTION_HANDLE = "HANDLE";
     public static final String ACTION_EVIDENCE_LINK = "EVIDENCE_LINK";
     public static final String ACTION_BATCH_CREATE = "BATCH_CREATE";
+    public static final String ACTION_BATCH_CLOSE = "BATCH_CLOSE";
     public static final String ACTION_IMPORT = "IMPORT";
     public static final String ACTION_SENSOR_CREATE = "SENSOR_CREATE";
 }

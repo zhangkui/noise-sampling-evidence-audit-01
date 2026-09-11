@@ -24,6 +24,9 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class BatchService {
 
+    public static final String STATUS_ACTIVE = "ACTIVE";
+    public static final String STATUS_CLOSED = "CLOSED";
+
     private final SamplingBatchMapper batchMapper;
     private final SensorService sensorService;
     private final AuditChainService auditChainService;
@@ -95,7 +98,7 @@ public class BatchService {
         batch.setPurpose(request.getPurpose());
         batch.setOperator(request.getOperator() != null ? request.getOperator()
                 : SecurityUtils.currentUsername());
-        batch.setStatus("ACTIVE");
+        batch.setStatus(STATUS_ACTIVE);
         batchMapper.insert(batch);
 
         auditChainService.append(SecurityUtils.currentUsername(), WebUtils.clientIp(),
@@ -103,6 +106,65 @@ public class BatchService {
                 AuditConstants.ENTITY_BATCH, batch.getBatchNo(),
                 AuditConstants.ACTION_BATCH_CREATE, null, batch);
         return batch;
+    }
+
+    /**
+     * 关闭批次：仅允许 ACTIVE → CLOSED。
+     *
+     * <p>幂等：批次已是 CLOSED 时直接返回当前状态，不重复追加审计；
+     * 状态变更与 before/after 快照审计在同一事务内原子提交，
+     * 审计记录当前登录用户、客户端 IP 与 traceId。</p>
+     *
+     * <p>入口不加事务：先取批次维度 Redis 锁串行化并发关闭，事务在锁内提交后再释放；
+     * 数据库条件更新（仅 ACTIVE 可置 CLOSED）作为最终防线。</p>
+     */
+    public SamplingBatch close(Long id) {
+        return distributedLock.executeWithLock("batch-close:" + id,
+                java.time.Duration.ofSeconds(10),
+                () -> new TransactionTemplate(transactionManager).execute(status -> doClose(id)));
+    }
+
+    private SamplingBatch doClose(Long id) {
+        SamplingBatch batch = batchMapper.selectById(id);
+        if (batch == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "采样批次不存在");
+        }
+        // 幂等：重复关闭直接返回当前状态，不追加重复审计节点
+        if (STATUS_CLOSED.equals(batch.getStatus())) {
+            return batch;
+        }
+        if (!STATUS_ACTIVE.equals(batch.getStatus())) {
+            throw new BusinessException(ErrorCode.PARAM_INVALID,
+                    "批次当前状态不允许关闭: " + batch.getStatus());
+        }
+
+        SamplingBatch before = copyBatch(batch);
+        // 条件更新兜底：仅 ACTIVE 可转为 CLOSED，并发下最多一个事务生效
+        int updated = batchMapper.closeIfActive(id);
+        if (updated == 0) {
+            throw new BusinessException(ErrorCode.CONCURRENT_CONFLICT);
+        }
+        batch.setStatus(STATUS_CLOSED);
+
+        // 状态变更与审计快照同一事务原子提交
+        auditChainService.append(SecurityUtils.currentUsername(), WebUtils.clientIp(),
+                UUID.randomUUID().toString(), 0L,
+                AuditConstants.ENTITY_BATCH, batch.getBatchNo(),
+                AuditConstants.ACTION_BATCH_CLOSE, before, batch);
+        return batch;
+    }
+
+    private SamplingBatch copyBatch(SamplingBatch src) {
+        SamplingBatch snap = new SamplingBatch();
+        snap.setId(src.getId());
+        snap.setBatchNo(src.getBatchNo());
+        snap.setSensorCode(src.getSensorCode());
+        snap.setStartTime(src.getStartTime());
+        snap.setEndTime(src.getEndTime());
+        snap.setPurpose(src.getPurpose());
+        snap.setOperator(src.getOperator());
+        snap.setStatus(src.getStatus());
+        return snap;
     }
 
     private BusinessException overlapException(List<SamplingBatch> overlaps) {

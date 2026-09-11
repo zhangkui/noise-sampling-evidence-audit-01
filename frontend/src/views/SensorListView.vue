@@ -52,10 +52,14 @@
             <el-table-column prop="endTime" label="结束时间" width="190" />
             <el-table-column prop="purpose" label="采样目的" show-overflow-tooltip />
             <el-table-column prop="operator" label="负责人" width="110" />
-            <el-table-column prop="status" label="状态" width="90" />
-            <el-table-column label="操作" width="110" fixed="right">
+            <el-table-column label="状态" width="90">
+              <template #default="{ row }"><StatusTag :status="row.status" kind="batch" /></template>
+            </el-table-column>
+            <el-table-column label="操作" width="170" fixed="right">
               <template #default="{ row }">
                 <el-button link type="primary" @click.stop="checkOverlap(row)">冲突检测</el-button>
+                <el-button v-if="row.status === 'ACTIVE'" link type="danger"
+                           :loading="closingId === row.id" @click.stop="closeBatch(row)">关闭</el-button>
               </template>
             </el-table-column>
             <template #empty>
@@ -138,7 +142,7 @@
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
-import { ElMessage, type FormInstance } from 'element-plus'
+import { ElMessage, ElMessageBox, type FormInstance } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import {
   batchApi,
@@ -311,6 +315,50 @@ async function checkOverlap(row: SamplingBatch) {
     ElMessage.success(`批次 ${row.batchNo} 与其他批次无时间重叠`)
   } else {
     ElMessage.warning(`与 ${conflicts.length} 个批次重叠：${conflicts.map((c) => c.batchNo).join(', ')}`)
+  }
+}
+
+// 关闭批次：确认 → 加载态 → 成功立即更新行状态；失败可重试
+const closingId = ref<number | null>(null)
+
+async function closeBatch(row: SamplingBatch) {
+  const confirmed = await ElMessageBox.confirm(
+    `确定关闭批次 ${row.batchNo} 吗？关闭后该批次不能再写入新的采样记录。`,
+    '关闭批次',
+    { confirmButtonText: '确定关闭', cancelButtonText: '取消', type: 'warning' }
+  ).then(() => true).catch(() => false)
+  if (!confirmed) return
+  await doCloseBatch(row)
+}
+
+async function doCloseBatch(row: SamplingBatch) {
+  closingId.value = row.id
+  try {
+    // 失败时提供重试，直到成功或用户取消
+    for (;;) {
+      try {
+        const updated = await batchApi.close(row.id)
+        // 关闭后立即展示服务端返回的最新状态（重复关闭幂等返回当前状态）
+        const idx = batches.value.findIndex((b) => b.id === row.id)
+        if (idx >= 0) batches.value[idx] = updated
+        ElMessage.success(`批次 ${row.batchNo} 已关闭`)
+        return
+      } catch {
+        // 具体错误原因已由拦截器统一弹出，这里提供失败重试入口
+        const retry = await ElMessageBox.confirm('关闭失败，是否重试？', '关闭批次', {
+          confirmButtonText: '重试',
+          cancelButtonText: '取消',
+          type: 'error'
+        }).then(() => true).catch(() => false)
+        if (!retry) {
+          // 与服务端状态对齐（可能已被他人并发关闭）
+          loadBatches()
+          return
+        }
+      }
+    }
+  } finally {
+    closingId.value = null
   }
 }
 

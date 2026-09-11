@@ -17,6 +17,7 @@ public enum ErrorCode {
     BATCH_OVERLAP(40902, "采样批次时间冲突：同一传感器存在时间区间重叠的采样批次"),
     CONCURRENT_CONFLICT(40903, "并发冲突：记录正在被其他请求处理，请重试"),
     DUPLICATE_ANOMALY(40904, "该记录已存在相同类型的异常事件"),
+    BATCH_CLOSED(40905, "采样批次已关闭，禁止写入新记录"),
 
     IMPORT_ALL_FAILED(42201, "全部记录导入失败"),
     SENSOR_NOT_FOUND(40401, "传感器不存在"),
