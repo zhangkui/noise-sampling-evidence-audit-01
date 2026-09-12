@@ -45,7 +45,7 @@
           </el-form>
         </div>
         <div class="table-card">
-          <el-table v-loading="batchLoading" :data="batches" border @row-click="onBatchRow">
+          <el-table v-loading="batchLoading" :data="batches" border @row-click="openBatchDetail">
             <el-table-column prop="batchNo" label="批次编号" width="200" />
             <el-table-column prop="sensorCode" label="传感器" width="130" />
             <el-table-column prop="startTime" label="开始时间" width="190" />
@@ -55,8 +55,9 @@
             <el-table-column label="状态" width="90">
               <template #default="{ row }"><StatusTag :status="row.status" kind="batch" /></template>
             </el-table-column>
-            <el-table-column label="操作" width="170" fixed="right">
+            <el-table-column label="操作" width="220" fixed="right">
               <template #default="{ row }">
+                <el-button link type="primary" @click.stop="openBatchDetail(row)">详情/统计</el-button>
                 <el-button link type="primary" @click.stop="checkOverlap(row)">冲突检测</el-button>
                 <el-button v-if="row.status === 'ACTIVE'" link type="danger"
                            :loading="closingId === row.id" @click.stop="closeBatch(row)">关闭</el-button>
@@ -142,6 +143,7 @@
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, type FormInstance } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import {
@@ -153,6 +155,8 @@ import {
 import StatusTag from '@/components/StatusTag.vue'
 import { ApiBusinessError } from '@/api/http'
 
+const router = useRouter()
+const route = useRoute()
 const tab = ref('sensors')
 
 // 传感器
@@ -362,12 +366,16 @@ async function doCloseBatch(row: SamplingBatch) {
   }
 }
 
-function onBatchRow(row: SamplingBatch) {
-  batchSensor.value = row.sensorCode
+function openBatchDetail(row: SamplingBatch) {
+  router.push({ name: 'batch-detail', params: { id: row.id } })
 }
 
 onMounted(async () => {
   await loadSensors()
+  // 从批次详情返回时直达批次标签页
+  if (route.query.tab === 'batches') {
+    tab.value = 'batches'
+  }
   await loadBatches()
 })
 </script>

@@ -41,6 +41,9 @@
     <select id="selectRecordPage" resultMap="recordVOMap">
         <include refid="recordColumns"/>
         WHERE r.deleted = 0
+        <if test="q.batchId != null">
+            AND r.batch_id = #{q.batchId}
+        </if>
         <if test="q.sensorCode != null and q.sensorCode != ''">
             AND r.sensor_code = #{q.sensorCode}
         </if>
@@ -89,5 +92,38 @@
         GROUP BY time_bucket
         ORDER BY time_bucket
         LIMIT 500
+    </select>
+
+    <!--
+      批次记录维度聚合：严格按 batch_id 等值过滤，不引入传感器/时间窗口，
+      避免把其他批次数据带入结果。空批次时聚合函数 MIN/MAX/AVG 返回 NULL，
+      COUNT 返回 0（单行结果，不会出现“无行”）。走 idx_record_batch 索引。
+    -->
+    <select id="selectBatchRecordStats" resultType="com.citynoise.evidence.dto.BatchStatisticsVO">
+        SELECT COUNT(*)                                   AS record_count,
+               MIN(sample_time)                           AS first_sample_time,
+               MAX(sample_time)                           AS last_sample_time,
+               ROUND(AVG(db_value), 2)                    AS avg_db,
+               MAX(db_value)                              AS max_db,
+               MIN(db_value)                              AS min_db
+        FROM noise_record
+        WHERE deleted = 0
+          AND batch_id = #{batchId}
+    </select>
+
+    <!--
+      批次异常状态分布：通过 EXISTS 半连接关联本批次未删除记录，
+      保证只统计属于该批次记录的异常事件，且不会因异常重复而放大计数。
+      无异常时返回空列表，服务层按已知状态补零。
+    -->
+    <select id="selectBatchAnomalyStats" resultType="com.citynoise.evidence.dto.AnomalyStatusCountVO">
+        SELECT ae.status AS status, COUNT(*) AS count
+        FROM anomaly_event ae
+        WHERE EXISTS (SELECT 1
+                      FROM noise_record r
+                      WHERE r.id = ae.record_id
+                        AND r.deleted = 0
+                        AND r.batch_id = #{batchId})
+        GROUP BY ae.status
     </select>
 </mapper>

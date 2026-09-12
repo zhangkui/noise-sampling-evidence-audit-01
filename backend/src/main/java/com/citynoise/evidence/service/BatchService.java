@@ -7,8 +7,11 @@ import com.citynoise.evidence.common.BusinessException;
 import com.citynoise.evidence.common.ErrorCode;
 import com.citynoise.evidence.common.RedisDistributedLock;
 import com.citynoise.evidence.common.WebUtils;
+import com.citynoise.evidence.dto.AnomalyStatusCountVO;
 import com.citynoise.evidence.dto.BatchCreateRequest;
+import com.citynoise.evidence.dto.BatchStatisticsVO;
 import com.citynoise.evidence.entity.SamplingBatch;
+import com.citynoise.evidence.mapper.NoiseRecordMapper;
 import com.citynoise.evidence.mapper.SamplingBatchMapper;
 import com.citynoise.evidence.security.SecurityUtils;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +31,7 @@ public class BatchService {
     public static final String STATUS_CLOSED = "CLOSED";
 
     private final SamplingBatchMapper batchMapper;
+    private final NoiseRecordMapper recordMapper;
     private final SensorService sensorService;
     private final AuditChainService auditChainService;
     private final RedisDistributedLock distributedLock;
@@ -45,6 +49,61 @@ public class BatchService {
             throw new BusinessException(ErrorCode.NOT_FOUND, "采样批次不存在");
         }
         return batch;
+    }
+
+    /**
+     * 批次详情与汇总统计。
+     *
+     * <p>纯只读操作：不修改记录、异常、证据，也不追加任何审计节点，
+     * CLOSED 批次同样可以查看历史统计。聚合全部在数据库端完成，
+     * 只回传一行统计结果，可应对大批量记录。</p>
+     *
+     * <p>空批次约定：记录数为 0，首末采样时间与 avg/max/min 分贝为 {@code null}，
+     * 异常计数全部为 0。</p>
+     */
+    public BatchStatisticsVO getStatistics(Long id) {
+        SamplingBatch batch = getById(id);
+
+        BatchStatisticsVO vo = recordMapper.selectBatchRecordStats(id);
+        if (vo == null) {
+            // 聚合查询无 GROUP BY 恒返回一行，这里仅作防御性兜底
+            vo = new BatchStatisticsVO();
+            vo.setRecordCount(0L);
+        }
+
+        // 基本信息回填，避免前端再发一次详情请求
+        vo.setId(batch.getId());
+        vo.setBatchNo(batch.getBatchNo());
+        vo.setSensorCode(batch.getSensorCode());
+        vo.setStartTime(batch.getStartTime());
+        vo.setEndTime(batch.getEndTime());
+        vo.setPurpose(batch.getPurpose());
+        vo.setOperator(batch.getOperator());
+        vo.setStatus(batch.getStatus());
+        vo.setCreatedAt(batch.getCreatedAt());
+
+        // 异常按状态补零：未知/新状态不会丢失，计入总数并原样返回分布
+        List<AnomalyStatusCountVO> counts = recordMapper.selectBatchAnomalyStats(id);
+        long open = 0, processing = 0, resolved = 0, ignored = 0, total = 0;
+        for (AnomalyStatusCountVO c : counts) {
+            long n = c.getCount() == null ? 0 : c.getCount();
+            total += n;
+            if ("OPEN".equals(c.getStatus())) {
+                open = n;
+            } else if ("PROCESSING".equals(c.getStatus())) {
+                processing = n;
+            } else if ("RESOLVED".equals(c.getStatus())) {
+                resolved = n;
+            } else if ("IGNORED".equals(c.getStatus())) {
+                ignored = n;
+            }
+        }
+        vo.setAnomalyTotal(total);
+        vo.setAnomalyOpen(open);
+        vo.setAnomalyProcessing(processing);
+        vo.setAnomalyResolved(resolved);
+        vo.setAnomalyIgnored(ignored);
+        return vo;
     }
 
     public SamplingBatch getByNo(String batchNo) {

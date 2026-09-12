@@ -28,6 +28,7 @@ export interface RecordItem {
 export interface RecordQuery {
   page?: number
   size?: number
+  batchId?: number
   sensorCode?: string
   startTime?: string
   endTime?: string
@@ -123,6 +124,34 @@ export interface SamplingBatch {
   purpose?: string
   operator?: string
   status: string
+  createdAt?: string
+}
+
+/**
+ * 批次汇总统计。空批次约定：recordCount=0，首末采样时间与 avg/max/minDb 为 null，
+ * 异常计数全部为 0。
+ */
+export interface BatchStatistics {
+  id: number
+  batchNo: string
+  sensorCode: string
+  startTime: string
+  endTime: string
+  purpose?: string
+  operator?: string
+  status: string
+  createdAt?: string
+  recordCount: number
+  firstSampleTime?: string | null
+  lastSampleTime?: string | null
+  avgDb?: number | null
+  maxDb?: number | null
+  minDb?: number | null
+  anomalyTotal: number
+  anomalyOpen: number
+  anomalyProcessing: number
+  anomalyResolved: number
+  anomalyIgnored: number
 }
 
 export interface ImportTask {
@@ -217,6 +246,8 @@ export const sensorApi = {
 
 export const batchApi = {
   list: (sensorCode?: string) => get<SamplingBatch[]>('/batches', { sensorCode }),
+  detail: (id: number) => get<SamplingBatch>(`/batches/${id}`),
+  statistics: (id: number) => get<BatchStatistics>(`/batches/${id}/statistics`),
   create: (data: any) => post<SamplingBatch>('/batches', data),
   close: (id: number) => post<SamplingBatch>(`/batches/${id}/close`),
   overlapCheck: (params: { sensorCode: string; startTime: string; endTime: string }) =>

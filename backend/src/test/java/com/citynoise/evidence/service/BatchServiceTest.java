@@ -6,6 +6,7 @@ import com.citynoise.evidence.common.BusinessException;
 import com.citynoise.evidence.common.ErrorCode;
 import com.citynoise.evidence.common.RedisDistributedLock;
 import com.citynoise.evidence.entity.SamplingBatch;
+import com.citynoise.evidence.mapper.NoiseRecordMapper;
 import com.citynoise.evidence.mapper.SamplingBatchMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -39,6 +40,8 @@ class BatchServiceTest {
     @Mock
     private SamplingBatchMapper batchMapper;
     @Mock
+    private NoiseRecordMapper recordMapper;
+    @Mock
     private SensorService sensorService;
     @Mock
     private AuditChainService auditChainService;
@@ -52,8 +55,8 @@ class BatchServiceTest {
     @BeforeEach
     @SuppressWarnings("unchecked")
     void setUp() {
-        batchService = new BatchService(batchMapper, sensorService, auditChainService,
-                distributedLock, transactionManager);
+        batchService = new BatchService(batchMapper, recordMapper, sensorService,
+                auditChainService, distributedLock, transactionManager);
         // Redis 锁直接放行；事务模板直接执行回调
         when(distributedLock.executeWithLock(anyString(), any(), any()))
                 .thenAnswer(inv -> ((Supplier<Object>) inv.getArgument(2)).get());

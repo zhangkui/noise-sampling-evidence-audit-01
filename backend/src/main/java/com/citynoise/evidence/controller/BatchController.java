@@ -4,6 +4,7 @@ import com.citynoise.evidence.common.BusinessException;
 import com.citynoise.evidence.common.ErrorCode;
 import com.citynoise.evidence.common.Result;
 import com.citynoise.evidence.dto.BatchCreateRequest;
+import com.citynoise.evidence.dto.BatchStatisticsVO;
 import com.citynoise.evidence.entity.SamplingBatch;
 import com.citynoise.evidence.service.BatchService;
 import jakarta.validation.Valid;
@@ -30,6 +31,23 @@ public class BatchController {
     @GetMapping
     public Result<List<SamplingBatch>> list(@RequestParam(required = false) String sensorCode) {
         return Result.ok(batchService.list(sensorCode));
+    }
+
+    /**
+     * 批次基本信息。不存在返回 40400 资源错误；CLOSED 批次可正常查看。
+     */
+    @GetMapping("/{id}")
+    public Result<SamplingBatch> detail(@PathVariable Long id) {
+        return Result.ok(batchService.getById(id));
+    }
+
+    /**
+     * 批次汇总统计：记录总数、首末采样时间、平均/最大/最小分贝、异常总数及各状态数量。
+     * 纯只读聚合；不存在返回 40400，CLOSED 批次同样可查看历史统计。
+     */
+    @GetMapping("/{id}/statistics")
+    public Result<BatchStatisticsVO> statistics(@PathVariable Long id) {
+        return Result.ok(batchService.getStatistics(id));
     }
 
     @PostMapping

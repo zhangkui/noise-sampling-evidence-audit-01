@@ -39,6 +39,16 @@
     </div>
 
     <div class="table-card">
+      <!-- 从批次详情/异常分布跳转携带的批次条件 -->
+      <el-alert v-if="batchFilterId" type="info" :closable="false" show-icon class="batch-banner">
+        <template #title>
+          仅显示批次
+          <strong>{{ batchFilterNo || batchFilterId }}</strong>
+          <span v-if="batchAnomalyLabel">下状态为「{{ batchAnomalyLabel }}」</span>
+          的采样记录
+          <el-button link type="primary" size="small" @click="clearBatchFilter">清除批次条件</el-button>
+        </template>
+      </el-alert>
       <div class="toolbar">
         <el-button type="primary" :icon="Plus" @click="openCreate">手工录入</el-button>
         <el-button type="warning" :icon="Promotion" :loading="concurrentLoading"
@@ -141,7 +151,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, type FormInstance } from 'element-plus'
 import { Search, RefreshLeft, Plus, Upload, Promotion } from '@element-plus/icons-vue'
 import { recordApi, sensorApi, batchApi, type RecordItem, type Sensor, type SamplingBatch } from '@/api'
@@ -150,6 +160,7 @@ import StatusTag from '@/components/StatusTag.vue'
 import { sha256Hex } from '@/utils/hash'
 
 const router = useRouter()
+const route = useRoute()
 const loading = ref(false)
 const loadError = ref(false)
 const records = ref<RecordItem[]>([])
@@ -157,9 +168,24 @@ const total = ref(0)
 const sensors = ref<Sensor[]>([])
 const timeRange = ref<[string, string] | null>(null)
 
+// 批次条件（从批次详情页跳转携带；不在普通筛选栏暴露，用顶部横幅展示）
+const batchFilterId = ref<number | null>(null)
+const batchFilterNo = ref('')
+
+const ANOMALY_LABELS: Record<string, string> = {
+  OPEN: '待处理',
+  PROCESSING: '处理中',
+  RESOLVED: '已解决',
+  IGNORED: '已忽略',
+  ANY: '有异常'
+}
+const batchAnomalyLabel = computed(() =>
+  query.anomalyStatus ? ANOMALY_LABELS[query.anomalyStatus] || '' : '')
+
 const query = reactive({
   page: 1,
   size: 10,
+  batchId: undefined as number | undefined,
   sensorCode: '',
   anomalyStatus: '',
   dbMin: undefined as number | undefined,
@@ -173,6 +199,7 @@ async function loadData() {
     const data = await recordApi.page({
       page: query.page,
       size: query.size,
+      batchId: query.batchId,
       sensorCode: query.sensorCode || undefined,
       anomalyStatus: query.anomalyStatus || undefined,
       dbMin: query.dbMin,
@@ -203,7 +230,33 @@ function onReset() {
   query.dbMin = undefined
   query.dbMax = undefined
   timeRange.value = null
+  clearBatchFilter(false)
   loadData()
+}
+
+// ---------------- 批次条件跳转 ----------------
+
+function applyRouteQuery() {
+  const id = Number(route.query.batchId)
+  if (!Number.isFinite(id) || id <= 0) return
+  batchFilterId.value = id
+  batchFilterNo.value = String(route.query.batchNo || '')
+  query.batchId = id
+  const anomaly = String(route.query.anomalyStatus || '')
+  query.anomalyStatus = ['OPEN', 'PROCESSING', 'RESOLVED', 'IGNORED', 'ANY'].includes(anomaly)
+    ? anomaly
+    : ''
+  query.page = 1
+}
+
+function clearBatchFilter(reload = true) {
+  batchFilterId.value = null
+  batchFilterNo.value = ''
+  query.batchId = undefined
+  if (route.query.batchId) {
+    router.replace({ name: 'records' })
+  }
+  if (reload) onSearch()
 }
 
 function onSizeChange() {
@@ -339,6 +392,7 @@ async function simulateConcurrent() {
 }
 
 onMounted(async () => {
+  applyRouteQuery()
   sensors.value = await sensorApi.list().catch(() => [])
   await loadData()
 })
@@ -349,6 +403,9 @@ onMounted(async () => {
   margin-bottom: 12px;
   display: flex;
   gap: 8px;
+}
+.batch-banner {
+  margin-bottom: 12px;
 }
 .db-high {
   color: #f56c6c;

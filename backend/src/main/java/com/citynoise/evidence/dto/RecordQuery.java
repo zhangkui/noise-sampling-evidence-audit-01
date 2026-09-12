@@ -13,6 +13,8 @@ public class RecordQuery {
 
     private Long page = 1L;
     private Long size = 10L;
+    /** 按采样批次精确过滤（从批次详情跳转时携带） */
+    private Long batchId;
     private String sensorCode;
     private LocalDateTime startTime;
     private LocalDateTime endTime;

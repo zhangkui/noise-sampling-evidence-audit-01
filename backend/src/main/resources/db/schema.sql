@@ -73,6 +73,7 @@ CREATE TABLE IF NOT EXISTS noise_record (
     -- 同一传感器、相同采样时间、相同原始哈希不得重复入库（数据库层最终防线）
     UNIQUE KEY uk_sensor_time_hash (sensor_code, sample_time, raw_data_hash),
     KEY idx_record_sensor_time (sensor_code, sample_time),
+    KEY idx_record_batch (batch_id),
     KEY idx_record_db (db_value)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT ='噪声采样记录';
 
@@ -179,3 +180,22 @@ CREATE TABLE IF NOT EXISTS import_item (
     PRIMARY KEY (id),
     KEY idx_import_item_task (task_id)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT ='批量导入明细';
+
+-- =====================================================================
+-- 兼容已有数据库的增量迁移（幂等、可重复执行）
+-- 老库由早期 CREATE TABLE 建表，缺少批次维度索引；这里通过 information_schema
+-- 判断后再决定是否添加，已存在时执行空操作，重复启动不会报错、不影响已有数据。
+-- 新库的索引已包含在上文建表语句中，此处检测到存在会自动跳过。
+-- =====================================================================
+SET @idx_exists := (
+    SELECT COUNT(*) FROM information_schema.statistics
+    WHERE table_schema = DATABASE()
+      AND table_name = 'noise_record'
+      AND index_name = 'idx_record_batch'
+);
+SET @ddl := IF(@idx_exists = 0,
+               'ALTER TABLE noise_record ADD INDEX idx_record_batch (batch_id)',
+               'SELECT 1');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;

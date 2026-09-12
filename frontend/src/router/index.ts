@@ -17,6 +17,7 @@ const router = createRouter({
         { path: 'imports/:id', name: 'import-detail', component: () => import('@/views/ImportDetailView.vue'), meta: { title: '导入结果' } },
         { path: 'trend', name: 'trend', component: () => import('@/views/TrendView.vue'), meta: { title: '分贝趋势' } },
         { path: 'sensors', name: 'sensors', component: () => import('@/views/SensorListView.vue'), meta: { title: '传感器与批次' } },
+        { path: 'batches/:id', name: 'batch-detail', component: () => import('@/views/BatchDetailView.vue'), meta: { title: '批次详情与统计' } },
         { path: 'audit', name: 'audit', component: () => import('@/views/AuditLogView.vue'), meta: { title: '审计日志' } }
       ]
     },
